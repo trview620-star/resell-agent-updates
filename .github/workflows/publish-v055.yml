@@ -1,0 +1,51 @@
+name: Publish Resell Agent v0.5.5
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v055.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download last verified base release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.5.4 --repo "$GITHUB_REPOSITORY" --pattern 'ResellAgent-v054.zip' --dir .
+
+      - name: Build version 0.5.5 and checksum
+        run: python scripts/build_release_v055.py ResellAgent-v054.zip
+
+      - name: Verify package checksum and version
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib
+          z=Path('resell-agent-mvp-v0.5.5.zip')
+          digest=hashlib.sha256(z.read_bytes()).hexdigest()
+          assert Path(str(z)+'.sha256').read_text().split()[0] == digest
+          with ZipFile(z) as archive:
+              source=archive.read('resell-agent-starter/agent/updater.py').decode()
+              assert "VERSION = '0.5.5'" in source
+              assert all(not n.startswith('resell-agent-starter/data/') for n in archive.namelist())
+          print('Validated version, checksum and archive.')
+          PY
+
+      - name: Publish new release with two assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.5.5 \
+            resell-agent-mvp-v0.5.5.zip \
+            resell-agent-mvp-v0.5.5.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v0.5.5" \
+            --notes "Automatic updater test: download, SHA-256 verification, backup and restart. Also adds support for TXT checksums in future releases."

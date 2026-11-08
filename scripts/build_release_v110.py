@@ -20,6 +20,7 @@ def replace(path,before,after):
     files[key]=content.replace(before,after).encode('utf-8')
 
 replace('agent/updater.py',"VERSION = '1.0.0'","VERSION = '1.1.0'")
+replace('tests/test_updater.py','1.0.1','1.1.1')
 replace('agent/ui_command_center.py',
     'from .backup import make_backup',
     'from .backup import make_backup\nfrom .ui_marketplace_photo import render_photo_mode')

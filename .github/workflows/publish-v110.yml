@@ -1,0 +1,60 @@
+name: Publish Resell Agent v1.1.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v110.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download v1.0.0 and its checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.0.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.0.0.zip*' --dir .
+
+      - name: Build Photo Mode update
+        run: python scripts/build_release_v110.py resell-agent-mvp-v1.0.0.zip
+
+      - name: Verify archive and SHA-256
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib
+          p=Path('resell-agent-mvp-v1.1.0.zip')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          with ZipFile(p) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/marketplace_photo.py' in names
+              assert "VERSION = '1.1.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Run all tests and syntax checks
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.1.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish verified updater assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.1.0 \
+            resell-agent-mvp-v1.1.0.zip \
+            resell-agent-mvp-v1.1.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.1.0 - Marketplace Photo Mode" \
+            --notes "Local photo editor: natural camera finish and editable white-background product compositing on user-provided room photos, with blur, placement, preview, downloads and reversible originals. This is traditional image compositing, not generative inpainting. Use seller-provided photos responsibly. No other publishing behavior changed."

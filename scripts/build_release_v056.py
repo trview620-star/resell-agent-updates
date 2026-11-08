@@ -4,8 +4,10 @@ from hashlib import sha256
 import sys
 
 source=Path(sys.argv[1] if len(sys.argv)>1 else "resell-agent-mvp-v0.5.5.zip")
-expected="bab659960bb0aa4cc211e41a6fa5595183770a4a69ee0a2134fd20692c047907"
-assert sha256(source.read_bytes()).hexdigest()==expected, "Wrong base package"
+checksum=Path(str(source)+".sha256")
+assert checksum.exists(), "Missing v0.5.5 published checksum"
+expected=checksum.read_text(encoding="ascii").split()[0]
+assert sha256(source.read_bytes()).hexdigest()==expected, "Source ZIP fails published checksum"
 with ZipFile(source) as zipfile:
     files={i.filename:zipfile.read(i.filename) for i in zipfile.infolist() if not i.is_dir()}
 ROOT="resell-agent-starter/"

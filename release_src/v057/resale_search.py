@@ -15,7 +15,7 @@ DOMAIN = {
     'HardverApró': 'hardverapro.hu', 'eBay': 'ebay.com',
     'Amazon': 'amazon.de',
 }
-HUF_PRICE = re.compile(r'(?<![\\w])([0-9][0-9\\s\\u00a0\\u202f.,]*?)\\s*(?:Ft|HUF)\\b', re.I)
+HUF_PRICE = re.compile(r'(?<!\w)([0-9][0-9\s\u00a0\u202f.,]*?)\s*(?:Ft|HUF)\b', re.I)
 
 
 def extract_single_huf_price(text: str):

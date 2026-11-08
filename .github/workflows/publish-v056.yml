@@ -1,0 +1,56 @@
+name: Publish Resell Agent v0.5.6
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v056.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download base release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.5.5 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v0.5.5.zip' --dir .
+
+      - name: Build 0.5.6 and checksum
+        run: python scripts/build_release_v056.py resell-agent-mvp-v0.5.5.zip
+
+      - name: Validate archive and checksum
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib
+          p = Path('resell-agent-mvp-v0.5.6.zip')
+          digest = hashlib.sha256(p.read_bytes()).hexdigest()
+          assert Path(str(p)+'.sha256').read_text().split()[0] == digest
+          with ZipFile(p) as z:
+              names = z.namelist()
+              assert 'resell-agent-starter/agent/deals.py' in names
+              assert "VERSION = '0.5.6'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          print('Archive validated')
+          PY
+
+      - name: Run unit tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v0.5.6.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m unittest discover -s tests -q
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.5.6             resell-agent-mvp-v0.5.6.zip             resell-agent-mvp-v0.5.6.zip.sha256             --repo "$GITHUB_REPOSITORY"             --title "Resell Agent v0.5.6 - Retail Price-Gap Scanner"             --notes "Adds a model-matched retail price-gap scanner and a hypothetical profit calculator to the existing Serper search page. Retail price differences are leads, not verified resale profit."

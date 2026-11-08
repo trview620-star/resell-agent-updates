@@ -1,4 +1,5 @@
 name: Publish Resell Agent v1.1.0
+# Rebuild after updater test version correction
 on:
   push:
     paths:

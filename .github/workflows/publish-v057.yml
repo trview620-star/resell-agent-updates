@@ -1,0 +1,59 @@
+name: Publish Resell Agent v0.5.7
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v057.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify base release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.5.6 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v0.5.6.zip*' --dir .
+
+      - name: Build package and checksum
+        run: python scripts/build_release_v057.py resell-agent-mvp-v0.5.6.zip
+
+      - name: Check package integrity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib
+          a=Path('resell-agent-mvp-v0.5.7.zip')
+          assert hashlib.sha256(a.read_bytes()).hexdigest()==Path(str(a)+'.sha256').read_text().split()[0]
+          with ZipFile(a) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/resale_search.py' in names
+              assert "VERSION = '0.5.7'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Run all offline tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v0.5.7.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m unittest discover -s tests -q
+
+      - name: Publish update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.5.7 \
+            resell-agent-mvp-v0.5.7.zip \
+            resell-agent-mvp-v0.5.7.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v0.5.7 - Resale Marketplace Search" \
+            --notes "Adds optional public resale listing research for our seven marketplaces. Search snippets are unverified asking-price leads, not completed sales. Users verify price and condition before saving to Research Lab."

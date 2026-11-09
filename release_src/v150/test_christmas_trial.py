@@ -16,7 +16,7 @@ class ChristmasPilotTests(unittest.TestCase):
         self.assertEqual(x.PRODUCT['model'],'8090234')
         self.assertIn('Christmas',x.photo_prompt().replace('Christmas-decor','Christmas'))
         self.assertIn('ONE realistic',x.photo_prompt())
-        self.assertIn('illustrative',x.hungarian_draft())
+        self.assertIn('illusztráció',x.hungarian_draft())
     def test_huf_price_only_explicit_currency(self):
         self.assertEqual(x.huf_price('2.890 Ft'),2890)
         self.assertEqual(x.huf_price('2 890,00 HUF'),2890)
@@ -63,7 +63,9 @@ class ChristmasPilotTests(unittest.TestCase):
         self.assertEqual(send.call_args.kwargs['files']['prompt'][0],None)
         self.assertEqual(send.call_args.kwargs['files']['width'],(None,'1024'))
         self.assertNotIn('input_image_0',send.call_args.kwargs['files'])
-        self.assertEqual(out,png())
+        with Image.open(io.BytesIO(out)) as image:
+            self.assertEqual(image.size,(128,96))
+            self.assertEqual(image.getpixel((0,0)),(0,128,0))
     def test_wrong_credentials_no_cloud_call(self):
         with patch.object(x.requests,'post') as send:
             with self.assertRaises(ValueError):

@@ -1,0 +1,41 @@
+name: Inspect published source for integrated workflow
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download release and show relevant code sections
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.5.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.5.1.zip' --dir .
+          mkdir -p extract
+          cd extract
+          unzip -q ../resell-agent-mvp-v1.5.1.zip
+          cd resell-agent-starter
+          python - <<'PY'
+          from pathlib import Path
+          for name in ['agent/db.py','agent/shopping.py','agent/ui_shopping.py','agent/ui_research.py','agent/ui_products.py','agent/ui_discovery.py','agent/ui_command_center.py','agent/listing.py','app.py','agent/photos.py','agent/extra_db.py']:
+              p=Path(name)
+              if not p.exists():continue
+              text=p.read_text()
+              print('=== FILE',name,'CHARS',len(text),'===')
+              if name=='agent/db.py':
+                  for k,l in enumerate(text.splitlines(),1):
+                      if k<=360:print(f'{k:04} {l}')
+              elif name=='app.py':
+                  for k,l in enumerate(text.splitlines(),1):
+                      if k<=260:print(f'{k:04} {l}')
+              else:
+                  for k,l in enumerate(text.splitlines(),1):
+                      if k<=190:print(f'{k:04} {l}')
+          PY

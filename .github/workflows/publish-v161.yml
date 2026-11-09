@@ -1,0 +1,60 @@
+name: Publish Resell Agent v1.6.1
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v161.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified v1.6.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.0.zip*' --dir .
+
+      - name: Build and hash v1.6.1
+        run: python scripts/build_release_v161.py resell-agent-mvp-v1.6.0.zip
+
+      - name: Verify checksum and source integration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          f=Path('resell-agent-mvp-v1.6.1.zip')
+          assert sha256(f.read_bytes()).hexdigest()==Path(str(f)+'.sha256').read_text().split()[0]
+          with ZipFile(f) as z:
+              assert 'resell-agent-starter/agent/auto_stock_photo.py' in z.namelist()
+              assert "VERSION = '1.6.1'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
+              assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/hunter.py').decode()
+              assert 'file_uploader' not in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
+          PY
+
+      - name: Run full app tests and compile
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.1.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.1 \
+            resell-agent-mvp-v1.6.1.zip \
+            resell-agent-mvp-v1.6.1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.1 - Automatic Catalog Photo Transform" \
+            --notes "Selecting a product automatically fetches a source catalog thumbnail where available and uses Cloudflare FLUX.2 Klein to generate one natural-looking home-style AI preview without any manual image upload. Preview and approve on site. Missing source and image permission status remain visible. No unsanctioned listing or purchasing."

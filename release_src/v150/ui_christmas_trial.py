@@ -95,7 +95,7 @@ def render_christmas_trial(products):
                     'outbound_shipping':0,'packaging':0,'marketplace_fees':0,
                     'risk_buffer':0,'target_price':0,
                     'stock_status':'unknown','stock_verified_at':None,
-                    'eta_days':None,'fulfillment':db.FULFILLMENT[0],
+                    'eta_days':0,'fulfillment':db.FULFILLMENT[0],
                     'status':'candidate',
                     'notes':'Christmas pilot; dated/third-party research lead. Supplier shipping may be unknown. '
                             'No resale comparable evidence or verified selling price; do not publish. '

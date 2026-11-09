@@ -1,0 +1,78 @@
+name: Publish Resell Agent v1.7.0 - Private Dark Dashboard
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v170.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified v1.6.9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.9 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.9.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v170.py resell-agent-mvp-v1.6.9.zip
+      - name: Verify release integrity and source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.7.0.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.7.0'" in z.read(root+'agent/updater.py').decode()
+              assert "Dashboard" in z.read(root+'app.py').decode()
+              assert 'private_research' in z.read(root+'agent/ui_private_dashboard.py').decode()
+              assert "['Vinted','Jófogás']" in z.read(root+'app.py').decode()
+              assert root+'tests/test_private_dashboard.py' in z.namelist()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/')
+                             for n in z.namelist())
+          PY
+      - name: Full regression tests
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.7.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Smoke-test new home and private workspaces
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          labels=[r.options for r in app.radio]
+          assert any('Dashboard' in opt and 'Vinted' in opt and 'Jófogás' in opt
+                     for opt in labels),'New private sidebar missing'
+          assert any('Termékcsoport' in r.label for r in app.radio),'Product work area missing'
+          print('Private dashboard rendered')
+          for page in ['Szállítási ellenőrzés','Beszállítók',
+                       'Keresési diagnosztikák','Vinted','Jófogás',
+                       'Listing manager','App updates','Termékfigyelés']:
+              nav=next(r for r in app.radio if 'Dashboard' in r.options)
+              nav.set_value(page)
+              app.run()
+              assert not app.exception,(page,[e.message for e in app.exception])
+              print(page,'rendered')
+          PY
+      - name: Publish verified GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.7.0 \
+            resell-agent-mvp-v1.7.0.zip \
+            resell-agent-mvp-v1.7.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.7.0 – Private Dark Dashboard" \
+            --notes "Functional private dark graphite/teal dashboard with product photo cards, real supplier/market data and diagnostic links, 13 selected shops, Vinted/Jófogás listing management, postcode-specific shipping evidence, and 4000 HUF after-cost fixed profit quotes. Existing data, photos, backups, and dashboard updater are preserved. Exact shipping promises require verification and are not fabricated."

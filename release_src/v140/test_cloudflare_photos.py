@@ -73,7 +73,7 @@ class CloudflarePhotosTests(unittest.TestCase):
 
     def test_binary_image_response(self):
         response=Mock(ok=True,status_code=200,content=make_image(),headers={'Content-Type':'image/png'})
-        self.assertEqual(c._decode_response(response),make_image())
+        with Image.open(io.BytesIO(c._decode_response(response))) as img:\n            self.assertEqual(img.size,(740,530))\n            self.assertEqual(img.getpixel((0,0)),(0,0,255))
 
     def test_bad_image_response(self):
         response=Mock(ok=True,status_code=200,content=b'{}',headers={'Content-Type':'application/json'})

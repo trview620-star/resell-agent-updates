@@ -1,0 +1,59 @@
+name: Publish Resell Agent v1.4.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v140.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.3.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.3.0.zip*' --dir .
+
+      - name: Build and SHA-256 hash
+        run: python scripts/build_release_v140.py resell-agent-mvp-v1.3.0.zip
+
+      - name: Check release integrity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          path=Path('resell-agent-mvp-v1.4.0.zip')
+          assert sha256(path.read_bytes()).hexdigest()==Path(str(path)+'.sha256').read_text().split()[0]
+          with ZipFile(path) as z:
+              assert 'resell-agent-starter/agent/ui_cloudflare_photos.py' in z.namelist()
+              assert "VERSION = '1.4.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(x.startswith('resell-agent-starter/data/') for x in z.namelist())
+          PY
+
+      - name: Run entire offline test suite
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.4.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish update and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.4.0 \
+            resell-agent-mvp-v1.4.0.zip \
+            resell-agent-mvp-v1.4.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.4.0 - Cloudflare AI Photos" \
+            --notes "Automated image editing through Cloudflare Workers AI FLUX.2 Klein 4B/9B, no local GPU load. Four individual previews with approve/regenerate/download/save. User-provided Cloudflare token entered privately in local app, never embedded in release. Daily free allowance applies; real API connection requires user test."

@@ -11,7 +11,7 @@ import re
 from urllib.parse import urlsplit
 
 import streamlit as st
-from . import db, hunter, shopping, photos, free_photo_import
+from . import db, hunter, shopping, photos, free_photo_import, cloudflare_photos
 from .publisher import MODES
 
 
@@ -224,6 +224,48 @@ def _selected_tab():
                 db.update_listing(l['id'],description=notes.strip())
             st.success('A leírás frissült a piszkozatokban.')
         else:st.error('Üres hirdetésszöveg nem menthető.')
+    st.markdown('**Termékfotó és AI-javítás**')
+    uploaded=st.file_uploader('Saját vagy engedéllyel használható eredeti termékkép',
+        type=['png','jpg','jpeg','webp'],key='hunter_source_photo_'+str(selected))
+    if uploaded and st.button('Eredeti kép mentése',key='hunter_save_orig_'+str(selected)):
+        try:
+            photos.save_photo(product['id'],uploaded.name,uploaded.getvalue())
+            st.success('Az eredeti fotó változatlanul elmentve.')
+            st.rerun()
+        except ValueError as error:
+            st.error(str(error))
+    original=db.rows('SELECT * FROM photos WHERE product_id=? ORDER BY id DESC',(product['id'],))
+    if original:
+        current=original[0]
+        local=db.PHOTOS/current['filename']
+        if local.is_file():
+            st.image(str(local),width=360,caption='Valódi, elmentett termékfotó')
+            cloud_id=credentials()[1]
+            cloud_token=credentials()[2]
+            if st.button('AI-fotó előnézet készítése',disabled=not bool(cloud_id and cloud_token),
+                    key='hunter_render_ai_photo_'+str(selected)):
+                try:
+                    with st.spinner('Cloudflare AI-val készül egy külön képelőnézet...'):
+                        data=cloudflare_photos.generate(local,'front_three_quarter',
+                            cloud_id,cloud_token,next(iter(cloudflare_photos.MODELS)),
+                            product['title'])
+                    st.session_state['hunter_photo_preview_'+str(selected)]=data
+                except ValueError as error:
+                    st.error(str(error))
+            preview=st.session_state.get('hunter_photo_preview_'+str(selected))
+            if preview:
+                st.image(preview,width=580,
+                    caption='AI-illusztráció — ellenőrizd a pontos termékadatokat')
+                if st.button('AI-előnézet jóváhagyása és mentése',
+                    key='hunter_accept_ai_photo_'+str(selected)):
+                    free_photo_import.save_approved(
+                        [{'bytes':preview,'approved':True}],db.DATA,product['id'])
+                    st.success('Kép jóváhagyva, külön mappába mentve.')
+            if not cloud_id or not cloud_token:
+                st.caption('AI-fotóhoz add meg a Cloudflare-kulcsot a Beállítások fülön.')
+    else:
+        st.caption('Pontos, hiteles termékfotó hiányzik. Beszállítói bélyegképet nem másolunk át automatikusan.')
+
     drafts=db.rows('SELECT * FROM listings WHERE product_id=? ORDER BY marketplace',(product['id'],))
     if drafts:
         st.markdown('**Elkészült piactéri piszkozatok**')

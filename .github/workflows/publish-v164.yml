@@ -1,0 +1,59 @@
+name: Publish Resell Agent v1.6.4 - Verified Condition and Four Photos
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v164.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified v1.6.3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.3 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.3.zip*' --dir .
+      - name: Build and hash v1.6.4
+        run: python scripts/build_release_v164.py resell-agent-mvp-v1.6.3.zip
+      - name: Verify package and protected folders
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.6.4.zip')
+          assert sha256(p.read_bytes()).hexdigest() == Path(str(p)+'.sha256').read_text().split()[0]
+          with ZipFile(p) as z:
+              root='resell-agent-starter/'
+              assert "VERSION = '1.6.4'" in z.read(root+'agent/updater.py').decode()
+              assert root+'agent/condition_copy.py' in z.namelist()
+              assert root+'agent/stock_photo_gallery.py' in z.namelist()
+              assert root+'tests/test_condition_copy.py' in z.namelist()
+              assert root+'tests/test_stock_photo_gallery.py' in z.namelist()
+              assert '4 különálló termékkép' in z.read(root+'agent/ui_hunter.py').decode()
+              assert 'Új, bontatlan' in z.read(root+'agent/condition_copy.py').decode()
+              assert 'def stage_uploaded_update' in z.read(root+'agent/updater.py').decode()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/') for n in z.namelist())
+          PY
+      - name: Run all application tests and compile
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.4.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Publish verified GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.4 \
+            resell-agent-mvp-v1.6.4.zip \
+            resell-agent-mvp-v1.6.4.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.4 - New/Unopened Listings and Four Photos" \
+            --notes "Confirmed new or factory-sealed condition appears in Hungarian listing titles and descriptions. Four separate AI illustrative image drafts per product with review/approval. Existing APIs and in-dashboard updater retained; no automatic publication or purchases."

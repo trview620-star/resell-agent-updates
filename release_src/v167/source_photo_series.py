@@ -165,6 +165,8 @@ def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None,only_
         raise ValueError('Érvénytelen képkocka.')
     if any(existing.get(slot,{}).get('status')=='approved' for slot in requested) and replace_existing:
         raise ValueError('A jóváhagyott képet nem lehet felülírni.')
+    if not replace_existing and all(slot in existing and existing[slot]['status']!='rejected' for slot in requested):
+        return {'created':[],'gallery':read(pid)}
     sources=_sources(pid,hunter_id)
     if not sources:
         raise ValueError('Nincs használható termékfotó. Tölts fel saját fotót, vagy adj meg képes beszállítói ajánlatot.')

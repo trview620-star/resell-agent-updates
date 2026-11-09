@@ -94,7 +94,7 @@ def _decode(data):
 
 def _crop_box(image,slot,focus):
     w,h=image.size
-    if slot==1 or slot==3 and focus is None:
+    if slot==1:
         return (0,0,w,h)
     # Focal point is chosen by the seller using two controls; a source crop
     # retains the exact source pixels and cannot hallucinate unseen geometry.

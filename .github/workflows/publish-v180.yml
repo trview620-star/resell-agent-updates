@@ -1,0 +1,64 @@
+name: Publish Resell Agent v1.8.0 – Demand Radar
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.7.3 with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.7.3 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.7.3.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v180.py resell-agent-mvp-v1.7.3.zip
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.8.0.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              app=z.read(root+'app.py').decode()
+              assert "VERSION = '1.8.0'" in z.read(root+'agent/updater.py').decode()
+              assert 'Keresleti radar' in app and 'render_demand_workbench' in app
+              assert 'Serper' in z.read(root+'agent/demand_workbench.py').decode()
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.8.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next(r for r in app.radio if 'Keresleti radar' in r.options)
+          assert nav.options==['Keresleti radar','App updates']
+          nav.set_value('App updates');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.8.0 \
+            resell-agent-mvp-v1.8.0.zip \
+            resell-agent-mvp-v1.8.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.8.0 – Demand Radar" \
+            --notes "Replaces the main workspace with a demand-first product discovery board. Record user-verified eBay Sold observations, search supplier offers from the 13 approved stores through Serper Shopping, inspect images/match confidence, and manually verify exact item, stock and guaranteed delivery to the chosen postcode. The legacy modules and local data remain in the update package but are no longer exposed in the main navigation. eBay sold data is recorded from the user's evidence; it is not scraped or fabricated."

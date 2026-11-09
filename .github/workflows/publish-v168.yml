@@ -1,0 +1,69 @@
+name: Publish Resell Agent v1.6.8 - Four Photo Workflow Polishing
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v168.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify v1.6.7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.7 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.7.zip*' --dir .
+      - name: Build and hash v1.6.8
+        run: python scripts/build_release_v168.py resell-agent-mvp-v1.6.7.zip
+      - name: Verify release package
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.6.8.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.6.8'" in z.read(root+'agent/updater.py').decode()
+              assert 'Katalógusképek cseréje saját fotókra' in z.read(root+'agent/ui_faithful_photos.py').decode()
+              assert 'def read(product_id,*,include_bytes=True,limit=4)' in z.read(root+'agent/source_photo_series.py').decode()
+              assert 'def stage_uploaded_update' in z.read(root+'agent/updater.py').decode()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/') for n in z.namelist())
+          PY
+      - name: Run full app regression suite
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.8.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Smoke-test Streamlit dashboard and listing manager
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next((r for r in app.radio if 'Listing manager' in r.options),None)
+          assert nav is not None
+          nav.set_value('Listing manager')
+          app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          print('App and Listing manager smoke test passed.')
+          PY
+      - name: Publish signed-off update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.8 \
+            resell-agent-mvp-v1.6.8.zip \
+            resell-agent-mvp-v1.6.8.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.8 - Photo Previews and Source Integrity" \
+            --notes "Safe four-shot crops preserve source pixels, logos and product markings. Replace initial supplier previews with original photos, refresh close-ups and main image, maintain distinct image roles and category-aware AI prompts. The app updater and all previous discovery, listing and backup features remain intact."

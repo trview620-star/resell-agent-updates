@@ -1,0 +1,73 @@
+name: Publish Resell Agent v1.6.7 - Identity-safe Product Photos
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v167.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified v1.6.6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.6 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.6.zip*' --dir .
+      - name: Build and hash v1.6.7
+        run: python scripts/build_release_v167.py resell-agent-mvp-v1.6.6.zip
+      - name: Verify update integrity and images
+        run: |
+          python - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.6.7.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.6.7'" in z.read(root+'agent/updater.py').decode()
+              for module in ('source_photo_series','ui_faithful_photos'):
+                  assert root+'agent/'+module+'.py' in z.namelist()
+              assert root+'tests/test_source_photo_series.py' in z.namelist()
+              assert 'ui_faithful_photos.render' in z.read(root+'agent/ui_hunter.py').decode()
+              assert 'source_photo_series.read' in z.read(root+'agent/listing_previews.py').decode()
+              assert 'auto_photo=False' in z.read(root+'agent/ui_market_radar.py').decode()
+              assert 'def stage_uploaded_update' in z.read(root+'agent/updater.py').decode()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/') for n in z.namelist())
+          PY
+      - name: Run complete application regression tests
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.7.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Smoke-test selected product and listing manager
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next((r for r in app.radio if 'Listing manager' in r.options),None)
+          assert nav is not None,'Listing manager navigation missing'
+          nav.set_value('Listing manager')
+          app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          print('Streamlit default and Listing manager pages rendered.')
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.7 \
+            resell-agent-mvp-v1.6.7.zip \
+            resell-agent-mvp-v1.6.7.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.7 - Source-faithful Four-Photo Studio" \
+            --notes "Lossless source-pixel four-photo series for selected products, seller-controlled closeup crops, real packaging/second-angle handling, source-labelled previews in listing manager, manual identity approval for optional AI images. Existing APIs, data, and in-app updates preserved."

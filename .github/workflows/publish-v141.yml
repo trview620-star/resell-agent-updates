@@ -1,0 +1,59 @@
+name: Publish Resell Agent v1.4.1
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v141.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download signed base release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.4.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.4.0.zip*' --dir .
+
+      - name: Build diagnostic release
+        run: python scripts/build_release_v141.py resell-agent-mvp-v1.4.0.zip
+
+      - name: Verify archive and hash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.4.1.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          with ZipFile(p) as z:
+              assert "VERSION = '1.4.1'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert '_safe_provider_error' in z.read('resell-agent-starter/agent/cloudflare_photos.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
+          PY
+
+      - name: Compile and run offline tests
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.4.1.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -q
+
+      - name: Publish release with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.4.1 \
+            resell-agent-mvp-v1.4.1.zip \
+            resell-agent-mvp-v1.4.1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.4.1 - Cloudflare Error Diagnostics" \
+            --notes "Diagnostic release to show the specific Cloudflare HTTP 400 validation code and safely redacted message. Does not require another token. No API credit used by release tests."

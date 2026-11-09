@@ -74,12 +74,6 @@ replace('agent/ui_hunter.py',
     "    if not real_link:\n"
     "        st.caption('A korábbi Shopping-hivatkozás nem közvetlen termékoldal. '\n"
     "                   'Most normál Google-keresés nyílik, nem üres Shopping-ajánlat.')")
-# Old gallery cards also get a safe link, in case this legacy view is reached.
-replace('agent/ui_hunter.py',
-    "                     st.markdown('[Beszállítói találat]('+row['url']+')')",
-    "                     url,real=supplier_links.navigable(row['url'],row['title'],row['merchant'])\n"
-    "                     st.link_button('Kereskedő termékoldala ↗' if real else "
-    "'Kereskedői keresés ↗',url)")
 render=Path('release_src/v165/ui_hunter_render.txt').read_text(encoding='utf-8')
 key=ROOT+'agent/ui_hunter.py'
 source=files[key].decode('utf-8')

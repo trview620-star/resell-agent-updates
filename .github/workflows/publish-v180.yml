@@ -28,7 +28,8 @@ jobs:
               app=z.read(root+'app.py').decode()
               assert "VERSION = '1.8.0'" in z.read(root+'agent/updater.py').decode()
               assert 'Keresleti radar' in app and 'render_demand_workbench' in app
-              assert 'Serper' in z.read(root+'agent/demand_workbench.py').decode()
+          demand=z.read(root+'agent/demand_workbench.py').decode()
+          assert 'market_intelligence.scan_keyword' in demand
               assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
           PY
       - name: Regression tests

@@ -90,7 +90,7 @@ class ChristmasPilotTests(unittest.TestCase):
                     'supplier_url':offer['url'],'supplier_price':offer['price_huf'],
                     'inbound_shipping':offer['shipping_huf'],'outbound_shipping':0,
                     'packaging':0,'marketplace_fees':0,'risk_buffer':0,'target_price':0,
-                    'stock_status':'unknown','stock_verified_at':None,'eta_days':None,
+                    'stock_status':'unknown','stock_verified_at':None,'eta_days':0,
                     'fulfillment':db.FULFILLMENT[0],'status':'candidate','notes':'Pilot'})
                 paths=free_photo_import.save_approved([{'bytes':png(),'approved':True}],db.DATA,id)
                 self.assertEqual(len(paths),1)

@@ -46,9 +46,8 @@ replace('agent/hunter.py',
     "                img=pictures.get((title.strip().casefold(),seller.strip().casefold()),'')",
     "                img=pictures.get((title.strip().casefold(),seller.strip().casefold()),'')\n"
     "                source_url,source_kind=supplier_links.offer_url(item,payload)")
-replace('agent/hunter.py',
-    "(item['url'],title,seller,int(item['price_huf']),img,phrase,topic,\n                          item['kind'],db.utcnow())",
-    "(source_url,title,seller,int(item['price_huf']),img,phrase,topic,\n                          source_kind,db.utcnow())")
+replace('agent/hunter.py',"(item['url'],title,seller","(source_url,title,seller")
+replace('agent/hunter.py',"item['kind'],db.utcnow())","source_kind,db.utcnow())")
 
 # Human Hungarian copy, fallback works even when cloud API is absent.
 span('agent/hunter.py','def plain_description(title):','TEXT_MODEL=',

@@ -1,0 +1,72 @@
+name: Publish Resell Agent v1.6.6 - Listing Photo Previews
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v166.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified v1.6.5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.5 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.5.zip*' --dir .
+      - name: Build and hash v1.6.6
+        run: python scripts/build_release_v166.py resell-agent-mvp-v1.6.5.zip
+      - name: Verify checksum and protected data
+        run: |
+          python - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          from hashlib import sha256
+          file=Path('resell-agent-mvp-v1.6.6.zip')
+          assert sha256(file.read_bytes()).hexdigest()==Path(str(file)+'.sha256').read_text().split()[0]
+          with ZipFile(file) as z:
+              root='resell-agent-starter/'
+              assert "VERSION = '1.6.6'" in z.read(root+'agent/updater.py').decode()
+              for module in ('listing_previews','photo_shot_plan'):
+                  assert root+'agent/'+module+'.py' in z.namelist()
+              assert 'listing_previews.render_listing_cards' in z.read(root+'app.py').decode()
+              assert 'listing_previews.render_selected_cards' in z.read(root+'agent/ui_hunter.py').decode()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/') for n in z.namelist())
+          PY
+      - name: Run all application regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.6.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Smoke-test Streamlit selected-product and listing pages
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[x.message for x in app.exception]
+          print('Default app page rendered with',len(app.radio),'navigation controls')
+          # AppTest controls are accessed through sidebar radio.
+          nav=next((r for r in app.radio if 'Listing manager' in r.options),None)
+          assert nav is not None,'Listing manager navigation not present'
+          nav.set_value('Listing manager')
+          app.run()
+          assert not app.exception,[x.message for x in app.exception]
+          print('Listing manager rendered without exception')
+          PY
+      - name: Publish verified GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.6 \
+            resell-agent-mvp-v1.6.6.zip \
+            resell-agent-mvp-v1.6.6.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.6 – Listing Image Previews" \
+            --notes "Image thumbnails beside selected products and listing drafts, source-labelled gallery with original seller photos prioritised, 4 contextual shot-role prompts and near-duplicate warnings. Existing API settings, backups and dashboard updater retained."

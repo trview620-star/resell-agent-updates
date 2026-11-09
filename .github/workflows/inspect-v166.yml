@@ -1,0 +1,39 @@
+name: Inspect image and listing interfaces for v1.6.6
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-v166.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect v1.6.5 release image and listing source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.6.5 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.5.zip' --dir .
+          unzip -q resell-agent-mvp-v1.6.5.zip
+          cd resell-agent-starter
+          python - <<'PY'
+          from pathlib import Path
+          blocks={
+            'app.py':[(235,475)],
+            'agent/ui_hunter.py':[(180,335)],
+            'agent/stock_photo_gallery.py':[(1,240)],
+            'agent/auto_stock_photo.py':[(25,44),(118,214)],
+            'agent/ui_listing_photos.py':[(1,190)],
+            'agent/photos.py':[(1,180)],
+            'agent/db.py':[(15,115)]
+          }
+          for path, ranges in blocks.items():
+              if not Path(path).exists():continue
+              print('=== FILE',path,'===')
+              lines=Path(path).read_text(encoding='utf8').splitlines()
+              for lo,hi in ranges:
+                  for n in range(lo-1,min(len(lines),hi)):
+                      print(f'{n+1:04d}: {lines[n]}')
+          PY

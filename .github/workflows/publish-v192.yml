@@ -1,0 +1,64 @@
+name: Publish Resell Agent v1.9.2 – Seasonal Product Grid
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download known-working v1.8.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.8.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.8.0.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v192.py resell-agent-mvp-v1.8.0.zip
+      - name: Verify package
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.9.2.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              app=z.read(root+'app.py').decode()
+              assert "VERSION = '1.9.2'" in z.read(root+'agent/updater.py').decode()
+              assert 'Termékek' in app and 'render_trending_catalog' in app
+              assert 'TERMÉKEK' not in app
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.9.2.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next(x for x in app.radio if 'Termékek' in x.options)
+          assert nav.options==['Termékek','App updates']
+          nav.set_value('App updates');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          PY
+      - name: Publish verified rollback-based release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.9.2 \
+            resell-agent-mvp-v1.9.2.zip \
+            resell-agent-mvp-v1.9.2.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.9.2 – Seasonal Product Grid" \
+            --notes "Restores the known-working v1.8.0 application base with a simple visual product grid. One refresh searches seasonal and evergreen topics in Google Shopping, filters offers to the 13 approved stores, and shows product catalogue images, current prices and Google Trends links. No listing or photo workflow is included. Existing local data remains in place."

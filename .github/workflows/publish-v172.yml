@@ -1,0 +1,64 @@
+name: Publish Resell Agent v1.7.2 – Compact Dashboard
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.7.1 with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.7.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.7.1.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v172.py resell-agent-mvp-v1.7.1.zip
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.7.2.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.7.2'" in z.read(root+'agent/updater.py').decode()
+              assert 'Kompakt lista' in z.read(root+'agent/ui_private_dashboard.py').decode()
+              assert 'item.get(\'checked_at\') or item.get(\'private_offers\')' in z.read(root+'agent/ui_private_dashboard.py').decode()
+              assert "MIN_PROFIT=4000" in z.read(root+'agent/private_research.py').decode()
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.7.2.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          for page in ('Szállítási ellenőrzés','Vinted','Jófogás','Termékfigyelés','App updates'):
+              nav=next(r for r in app.radio if 'Dashboard' in r.options)
+              nav.set_value(page); app.run()
+              assert not app.exception,(page,[e.message for e in app.exception])
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.7.2 \
+            resell-agent-mvp-v1.7.2.zip \
+            resell-agent-mvp-v1.7.2.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.7.2 – Compact Dashboard Workspace" \
+            --notes "Compact Hungarian dashboard toolbar and six truthful database-backed KPIs, product list/card views, price filtering and sorting, and tighter shared dark styling. Dashboard worklists now exclude unsearched seed phrases. Existing local data, backup and updater workflows are preserved. Delivery checks remain manual evidence based; no automated shipping promises or marketplace publishing are claimed."

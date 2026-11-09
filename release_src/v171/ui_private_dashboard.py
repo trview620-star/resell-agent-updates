@@ -20,7 +20,7 @@ def navigate(page):
 
 
 def _post_settings(zip_code):
-    with st.expander('Pest vármegyei szállítási cím beállítása',expanded=not bool(zip_code)):
+    with st.expander('Pest vármegyei szállítási cím beállítása',expanded=False):
         with st.form('private_postcode_form'):
             chosen=st.text_input('Kiszállítási irányítószám',value=zip_code,
                                  max_chars=4,placeholder='pl. 2112')
@@ -36,40 +36,49 @@ def _post_settings(zip_code):
 
 
 def _top_controls(zip_code):
-    st.markdown('<div class="private-heading">'
-                '<div><div class="private-overline">SAJÁT MUNKATERÜLET</div>'
-                '<h1>Resell Agent <span>Dashboard</span></h1>'
-                '<p>13 beszállító · Vinted és Jófogás · tényleges keresési eredmények</p></div>'
-                '</div>',unsafe_allow_html=True)
-    a,b,c,d=st.columns([3.2,1.2,1.5,1.1],gap='small')
+    a,b,c,d,e=st.columns([3.1,1.25,1.55,1.35,.95],gap='small')
     with a:
         st.text_input('Termék, márka, modell',placeholder='Pl. LEGO, Sony, Nintendo…',
                       key='private_search',label_visibility='collapsed')
     with b:
-        st.markdown('<div class="private-chip">📍 Pest: '+escape(zip_code or 'nincs beállítva')+'</div>',
-                    unsafe_allow_html=True)
+        st.text_input('Cél irányítószám',value=zip_code or '',max_chars=4,
+                      placeholder='Irányítószám',key='private_toolbar_postcode',
+                      label_visibility='collapsed',help='Pest vármegyei, négyjegyű irányítószám')
     with c:
-        st.markdown('<div class="private-chip">🚚 Max. 4 munkanap</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="private-chip">🚚 Max. 4 munkanap</div>',unsafe_allow_html=True)
     with d:
-        if st.button('Frissítés',key='private_data_refresh',width='stretch'):
+        st.markdown('<div class="private-chip">₿ Min. profit: 4 000 Ft</div>',unsafe_allow_html=True)
+    with e:
+        if st.button('⟳ Frissítés',key='private_data_refresh',width='stretch'):
             st.rerun()
-    st.markdown('<div class="private-kicker">Minimum tervezett profit: '
-                '<strong>+4 000 Ft</strong> minden igazolt költség után'
-                '</div>',unsafe_allow_html=True)
+    new_code=st.session_state.get('private_toolbar_postcode','').strip()
+    if new_code and new_code!=zip_code and len(new_code)==4:
+        with st.popover('Irányítószám mentése'):
+            pest=st.checkbox('A cím Pest vármegyében található',key='private_toolbar_pest_confirm')
+            if st.button('Mentés',key='private_toolbar_postcode_save'):
+                try:
+                    rules.save_postcode(new_code,pest)
+                    st.rerun()
+                except ValueError as err: st.error(str(err))
 
 
 def _metrics(items,ship,costs,code,listings):
     metrics=rules.shortlist_metrics(items,ship,costs,code)
     vinted=sum(x['marketplace']=='Vinted' for x in listings)
     jofogas=sum(x['marketplace']=='Jófogás' for x in listings)
+    profitable=[]
+    for item in items:
+        offer=item.get('best_offer')
+        if not offer: continue
+        quotes=[rules.price_quote(offer['price_huf'],costs.get((offer['id'],m))) for m in rules.MARKETS]
+        profitable.extend(q['profit_huf'] for q in quotes if q)
     rows=[
-       ('Kutatási jelöltek',str(len(items)),'Vizsgálható termékmodellek'),
-       ('Ellenőrzött keresések',str(metrics['checked']),'Serper Shopping'),
-       ('13 boltos ajánlat',str(metrics['with_offers']),'Legalább egy ajánlat'),
-       ('4 napos igazolás',str(metrics['fast']),'24 órán belüli ellenőrzés'),
-       ('Kész ajánlat',str(metrics['ready']),'Szállítás + összes költség'),
-       ('Hirdetésrekordok',f'{vinted} / {jofogas}','Vinted / Jófogás')
+       ('Ellenőrzött termékek',str(metrics['checked']),'Mentett keresési futások'),
+       ('Ajánlott termékek',str(len(items)),'Valós kutatási jelöltek'),
+       ('4 napon belüli',str(metrics['fast']),'Friss, kézi szállítási igazolás'),
+       ('Átlagos tervezett profit',money(sum(profitable)//len(profitable) if profitable else None),'Csak igazolt költségekből'),
+       ('Vinted lehetőség',str(vinted),'Helyi hirdetésrekord'),
+       ('Jófogás lehetőség',str(jofogas),'Helyi hirdetésrekord')
     ]
     cols=st.columns(6,gap='small')
     for col,(title,value,caption) in zip(cols,rows):
@@ -249,16 +258,21 @@ def _research_workspace(items,shipping,costs,code,ready_only=False):
     offers=[i for i in items if not query or query in i['phrase'].casefold()]
     with left:
         st.markdown('#### '+('Ajánlott termékek' if ready_only else 'Termékfigyelés'))
-        f1,f2=st.columns([1,1],gap='small')
+        f1,f2,f3=st.columns([1,1,1.25],gap='small')
         cats=['Mind']+list(market_intelligence.SOURCES)
         with f1:cat=st.selectbox('Kategória',cats,key='private_cat')
-        with f2:
-            store=st.selectbox('Beszállító',['Mind']+[s[0] for s in rules.SUPPLIERS],
-                               key='private_store')
+        with f2: store=st.selectbox('Beszállító',['Mind']+[s[0] for s in rules.SUPPLIERS],key='private_store')
+        with f3: view=st.radio('Nézet',['Kompakt lista','Termékkártyák'],horizontal=True,key='private_view')
         offers=[i for i in offers if (cat=='Mind' or i['category']==cat)]
         if store!='Mind':
             offers=[i for i in offers if
                     any(o['registered_supplier']==store for o in i['private_offers'])]
+        price_floor,price_ceiling=st.slider('Beszerzési ársáv (Ft)',0,500000,(0,500000),step=5000,key='private_price_range')
+        offers=[i for i in offers if not i.get('best_offer') or price_floor<=int(i['best_offer']['price_huf'])<=price_ceiling]
+        sort=st.selectbox('Rendezés',['Ajánlási pont szerint','Legalacsonyabb beszerzési ár','Legfrissebb keresés'],key='private_sort')
+        if sort=='Ajánlási pont szerint': offers.sort(key=lambda i:(-int(i['score']),i['phrase'].casefold()))
+        elif sort=='Legalacsonyabb beszerzési ár': offers.sort(key=lambda i:int(i['best_offer']['price_huf']) if i.get('best_offer') else 10**12)
+        else: offers.sort(key=lambda i:i.get('checked_at') or '',reverse=True)
         if ready_only or tab=='Teljesen előkészített':
             offers=[i for i in offers if rules.is_ready(i,shipping,costs,code)]
         elif tab=='Szállítás ellenőrzött':
@@ -276,8 +290,20 @@ def _research_workspace(items,shipping,costs,code,ready_only=False):
         page=st.number_input('Találati oldal',1,pages,1,key='private_list_page')
         selected=_selection(offers)
         for item in offers[(page-1)*8:page*8]:
-            _listing_row(item,selected and item['phrase']==selected['phrase'],
-                         shipping,costs,code)
+            if view=='Kompakt lista':
+                _listing_row(item,selected and item['phrase']==selected['phrase'],shipping,costs,code)
+            else:
+                with st.container(border=True):
+                    pic,title=st.columns([1,3],gap='small')
+                    with pic:
+                        if item.get('thumbnail'): st.image(item['thumbnail'],width='stretch')
+                        else: st.caption('Nincs katalóguskép')
+                    with title:
+                        st.markdown('**'+escape(item['phrase'])+'**')
+                        st.caption(item['category']+' · '+str(item['score'])+' kutatási pont · '+_status(item,shipping,costs,code))
+                        if item.get('best_offer'): st.caption(item['best_offer']['registered_supplier']+' · '+money(item['best_offer']['price_huf']))
+                        if st.button('Részletek',key='private_card_'+str(item['id'])):
+                            st.session_state['private_selected_phrase']=item['phrase']; st.rerun()
     with right:
         st.markdown('#### Termék részletei')
         _detail_panel(_selection(offers),shipping,costs,code)
@@ -461,7 +487,10 @@ def _market_page(market,listings):
 
 def render(page,products=None,listings=None):
     rules.initialize()
-    items=rules.candidates()
+    # Seed phrases help start research, but are not database findings. Show only
+    # phrases with a completed search or saved supplier offers in live worklists.
+    items=[item for item in rules.candidates()
+           if item.get('checked_at') or item.get('private_offers')]
     zip_code=rules.postcode()
     shipping=rules.delivery_records(zip_code)
     costs=rules.cost_records()

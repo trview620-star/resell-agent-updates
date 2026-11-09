@@ -1,0 +1,39 @@
+name: Inspect listing and shopping data contracts
+on:
+  push:
+    paths: ['.github/workflows/inspect-more.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect contracts in published app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.5.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.5.1.zip' --dir .
+          unzip -q resell-agent-mvp-v1.5.1.zip
+          cd resell-agent-starter
+          python - <<'PY'
+          from pathlib import Path
+          ranges={
+            'agent/shopping.py':(175,395),
+            'agent/extra_db.py':(120,225),
+            'agent/ui_discovery.py':(1,170),
+            'agent/ui_command_center.py':(170,320),
+            'agent/db.py':(225,262),
+            'agent/ui_updates.py':(1,120),
+            'agent/opportunities.py':(1,150),
+            'agent/backup.py':(1,120),
+          }
+          for name,(start,end) in ranges.items():
+              p=Path(name)
+              if p.exists():
+                  print('== BEGIN',name,'==')
+                  for i,line in enumerate(p.read_text().splitlines(),1):
+                      if start<=i<=end:print(f'{i:04} {line}')
+                  print('== END',name,'==')
+          PY

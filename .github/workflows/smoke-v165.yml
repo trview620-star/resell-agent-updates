@@ -1,0 +1,35 @@
+name: Smoke-test current Resell Agent dashboard
+on:
+  push:
+    paths:
+      - '.github/workflows/smoke-v165.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download published v1.6.5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.6.5 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.5.zip' --dir .
+          unzip -q resell-agent-mvp-v1.6.5.zip
+      - name: Install UI dependencies
+        run: python -m pip install -q -r resell-agent-starter/requirements.txt
+      - name: Run Streamlit page in AppTest
+        run: |
+          cd resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          a=AppTest.from_file('app.py',default_timeout=60).run()
+          print('Page exceptions:',len(a.exception))
+          for err in a.exception:print(str(err.message)[:1300])
+          assert not a.exception,'Main page has Streamlit runtime exception'
+          print('Radio menus:',len(a.radio))
+          print('Buttons:',len(a.button))
+          assert a.radio,'Navigation must be present'
+          print('Streamlit default hunter page rendered successfully.')
+          PY

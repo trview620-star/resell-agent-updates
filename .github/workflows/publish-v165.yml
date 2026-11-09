@@ -1,0 +1,56 @@
+name: Publish Resell Agent v1.6.5 - Market Intelligence Dashboard
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v165.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified v1.6.4
+        env:
+          GH_${{ github.token }}: ${{ github.token }}
+        run: gh release download v1.6.4 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.4.zip*' --dir .
+      - name: Build v1.6.5
+        run: python scripts/build_release_v165.py resell-agent-mvp-v1.6.4.zip
+      - name: Verify manifest and evidence modules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.6.5.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.6.5'" in z.read(root+'agent/updater.py').decode()
+              for module in ['supplier_links','market_intelligence','product_copy','ui_market_radar','ui_theme']:
+                  assert root+'agent/'+module+'.py' in z.namelist()
+              assert 'def stage_uploaded_update' in z.read(root+'agent/updater.py').decode()
+              assert '50 konkrét kutatási jelölt' in z.read(root+'agent/ui_market_radar.py').decode()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/') for n in z.namelist())
+          PY
+      - name: Run app tests and compile all source
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.5.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Publish verified release
+        env:
+          GH_${{ github.token }}: ${{ github.token }}
+        run: |
+          gh release create v1.6.5 \
+            resell-agent-mvp-v1.6.5.zip \
+            resell-agent-mvp-v1.6.5.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.5 – Top 50 & Supplier Link Fix" \
+            --notes "Market Intelligence Top 50 candidate radar with category-level sources and live supplier price checks, independent custom keywords, reliable merchant/search fallback links, more natural Hungarian descriptions, modern responsive interface. No fabricated sales or profit metrics. Existing APIs and updater preserved."

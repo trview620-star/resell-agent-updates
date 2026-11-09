@@ -148,7 +148,7 @@ def _sources(product_id,hunter_id):
     return [candidate] if candidate else []
 
 
-def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None):
+def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None,only_slots=None):
     """Create four separately reviewed originals-preserving variations.
 
     When a slot was already approved, regenerating is always refused.
@@ -160,8 +160,11 @@ def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None):
         raise ValueError('A termék már nem található.')
     existing={r['slot']:r for r in db.rows(
         'SELECT * FROM faithful_photo_series WHERE product_id=?',(pid,))}
-    if any(r['status']=='approved' for r in existing.values()) and replace_existing:
-        raise ValueError('A jóváhagyott fotókat előbb külön vonj vissza.')
+    requested=VALID_SLOTS if only_slots is None else tuple(only_slots)
+    if not requested or any(slot not in VALID_SLOTS for slot in requested):
+        raise ValueError('Érvénytelen képkocka.')
+    if any(existing.get(slot,{}).get('status')=='approved' for slot in requested) and replace_existing:
+        raise ValueError('A jóváhagyott képet nem lehet felülírni.')
     sources=_sources(pid,hunter_id)
     if not sources:
         raise ValueError('Nincs használható termékfotó. Tölts fel saját fotót, vagy adj meg képes beszállítói ajánlatot.')
@@ -172,8 +175,8 @@ def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None):
     folder=db.DATA/SERIES_DIR/str(pid)
     folder.mkdir(parents=True,exist_ok=True)
     produced=[]
-    for slot in VALID_SLOTS:
-        if slot in existing and not replace_existing:
+    for slot in requested:
+        if slot in existing and existing[slot]['status']!='rejected' and not replace_existing:
             continue
         source,role=_assigned(sources,slot)
         different=slot==3 and len(sources)>1
@@ -191,6 +194,9 @@ def create(product_id,*,hunter_id=None,replace_existing=False,focuses=None):
             note+=' Másik kameraálláshoz külön forrásfotó szükséges.'
         if slot==4 and not packaging:
             note+=' Dobozfotóhoz a valódi csomagolást külön fotózd le.'
+        image=_decode(source['content'])
+        if min(image.size)<700:
+            note+=' Alacsony felbontású forrás; az apró részletek nem biztos, hogy jól olvashatók.'
         tmp=folder/(filename+'.tmp')
         target=folder/filename
         try:

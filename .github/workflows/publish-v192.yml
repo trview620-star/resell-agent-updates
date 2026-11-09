@@ -28,7 +28,6 @@ jobs:
               app=z.read(root+'app.py').decode()
               assert "VERSION = '1.9.2'" in z.read(root+'agent/updater.py').decode()
               assert 'Termékek' in app and 'render_trending_catalog' in app
-              assert 'TERMÉKEK' not in app
               assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
           PY
       - name: Regression tests

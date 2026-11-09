@@ -1,0 +1,63 @@
+name: Publish Resell Agent v1.7.3 – Vinted Manual Upload Prep
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.7.2 with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.7.2 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.7.2.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v173.py resell-agent-mvp-v1.7.2.zip
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.7.3.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.7.3'" in z.read(root+'agent/updater.py').decode()
+              assert 'Gyors kézi feltöltés' in z.read(root+'agent/ui_private_dashboard.py').decode()
+              assert 'build_upload_bundle' in z.read(root+'agent/vinted_upload.py').decode()
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.7.3.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          for page in ('Vinted','Jófogás','Szállítási ellenőrzés','App updates'):
+              nav=next(r for r in app.radio if 'Dashboard' in r.options)
+              nav.set_value(page); app.run()
+              assert not app.exception,(page,[e.message for e in app.exception])
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.7.3 \
+            resell-agent-mvp-v1.7.3.zip \
+            resell-agent-mvp-v1.7.3.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.7.3 – Vinted Manual Upload Prep" \
+            --notes "Adds a focused local upload-preparation panel for personally owned used items: copy-ready listing text and price, original-photo bundle, and a link to the Vinted create-item page. The user reviews required listing details and publishes manually. No login automation or unattended publishing."

@@ -1,0 +1,69 @@
+name: Publish Resell Agent v1.9.1 – Automatic Market Diagnostics
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.9.0 with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.9.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.9.0.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v191.py resell-agent-mvp-v1.9.0.zip
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.9.1.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              app=z.read(root+'app.py').decode()
+              work=z.read(root+'agent/demand_workbench.py').decode()
+              ui=z.read(root+'agent/ui_product_studio.py').decode()
+              studio=z.read(root+'agent/product_studio.py').decode()
+              assert "VERSION = '1.9.1'" in z.read(root+'agent/updater.py').decode()
+              assert 'Termékkatalógus' in app and 'render_product_studio' in app
+              assert 'scan_market_diagnostics' in ui and 'Google-indexelt' in ui
+              assert 'studio_market_search_results' in studio
+              assert 'sold_units INTEGER CHECK(sold_units IS NULL' in work
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.9.1.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next(x for x in app.radio if 'Termékkatalógus' in x.options)
+          assert nav.options==['Termékkatalógus','App updates']
+          nav.set_value('App updates');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.9.1 \
+            resell-agent-mvp-v1.9.1.zip \
+            resell-agent-mvp-v1.9.1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.9.1 – Automatic Market Diagnostics" \
+            --notes "A single product search now checks the 13 approved supplier offers and searches Google-indexed results for Google Trends, Vinted, Jófogás and eBay Sold. The user does not enter listing counts or prices for those sources. eBay actual sold counts remain optional because search snippets cannot prove completed sales and the official API is restricted. Vinted/Jófogás snippets are indexed results, not total active listings. Existing local records and verified offers are migrated and preserved."

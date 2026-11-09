@@ -1,0 +1,40 @@
+name: Inspect current app layout and shopping contracts
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-v165.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Examine v1.6.4 app safely
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.6.4 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.4.zip' --dir .
+          unzip -q resell-agent-mvp-v1.6.4.zip
+          cd resell-agent-starter
+          python - <<'PY'
+          from pathlib import Path
+          names=['app.py','agent/shopping.py','agent/ui_hunter.py','agent/hunter.py','agent/ui_updates.py']
+          for name in names:
+              p=Path(name)
+              print('\n==========',name,'==========')
+              lines=p.read_text(encoding='utf-8').splitlines()
+              if name=='agent/shopping.py':
+                  ranges=[(1,105),(115,290),(290,400)]
+              elif name=='app.py':
+                  ranges=[(1,230)]
+              elif name=='agent/ui_hunter.py':
+                  ranges=[(95,198),(200,290),(380,445)]
+              elif name=='agent/hunter.py':
+                  ranges=[(145,210),(246,365)]
+              else:ranges=[(1,60)]
+              for low,high in ranges:
+                  for i in range(low-1,min(high,len(lines))):
+                      print(f'{i+1:04}: {lines[i]}')
+          PY

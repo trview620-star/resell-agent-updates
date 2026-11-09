@@ -21,15 +21,14 @@ def initialize():
         CREATE TABLE IF NOT EXISTS demand_leads(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           phrase TEXT NOT NULL UNIQUE,
-          sold_units INTEGER CHECK(sold_units IS NULL OR sold_units>0),
-          period_days INTEGER CHECK(period_days IS NULL OR period_days BETWEEN 1 AND 365),
+          sold_units INTEGER NOT NULL CHECK(sold_units>0),
+          period_days INTEGER NOT NULL CHECK(period_days BETWEEN 1 AND 365),
           ebay_median_huf INTEGER CHECK(ebay_median_huf IS NULL OR ebay_median_huf>0),
-          evidence_url TEXT NOT NULL DEFAULT '',
+          evidence_url TEXT NOT NULL,
           manually_verified INTEGER NOT NULL CHECK(manually_verified IN (0,1)),
           checked_at TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
-          ,CHECK(manually_verified=0 OR (sold_units IS NOT NULL AND period_days IS NOT NULL AND evidence_url<>''))
         );
         CREATE TABLE IF NOT EXISTS demand_supplier_checks(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,67 +50,22 @@ def initialize():
         );
         CREATE INDEX IF NOT EXISTS ix_demand_checks_lead ON demand_supplier_checks(lead_id,checked_at);
         """)
-    _migrate_optional_sold_evidence()
 
 
-def _migrate_optional_sold_evidence():
-    """Allow a search term without fake eBay sales, preserving child records."""
-    sql=db.row("SELECT sql FROM sqlite_master WHERE type='table' AND name='demand_leads'")
-    if not sql or 'sold_units INTEGER NOT NULL' not in str(sql['sql']):return
-    con=db.connect()
-    try:
-        con.execute('PRAGMA foreign_keys=OFF')
-        con.execute('BEGIN IMMEDIATE')
-        parent=[dict(r) for r in con.execute('SELECT * FROM demand_leads')]
-        children=[];indexes=[]
-        for row in con.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-            name=row['name']
-            if name=='demand_leads':continue
-            refs=con.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
-            if any(fk['table']=='demand_leads' for fk in refs):
-                create=con.execute('SELECT sql FROM sqlite_master WHERE type=\'table\' AND name=?',(name,)).fetchone()['sql']
-                rows=[dict(x) for x in con.execute(f'SELECT * FROM "{name}"')]
-                children.append((name,create,rows))
-        child_names={name for name,_,_ in children}|{'demand_leads'}
-        for row in con.execute("SELECT tbl_name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
-            if row['tbl_name'] in child_names:indexes.append(row['sql'])
-        for name,_,_ in children:con.execute(f'DROP TABLE "{name}"')
-        con.execute('DROP TABLE demand_leads')
-        con.execute('''CREATE TABLE demand_leads(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,phrase TEXT NOT NULL UNIQUE,
-          sold_units INTEGER CHECK(sold_units IS NULL OR sold_units>0),
-          period_days INTEGER CHECK(period_days IS NULL OR period_days BETWEEN 1 AND 365),
-          ebay_median_huf INTEGER CHECK(ebay_median_huf IS NULL OR ebay_median_huf>0),
-          evidence_url TEXT NOT NULL DEFAULT '',manually_verified INTEGER NOT NULL CHECK(manually_verified IN (0,1)),
-          checked_at TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
-          CHECK(manually_verified=0 OR (sold_units IS NOT NULL AND period_days IS NOT NULL AND evidence_url<>'')))''')
-        for row in parent:
-            columns=list(row);con.execute('INSERT INTO demand_leads('+','.join(columns)+') VALUES('+','.join('?' for _ in columns)+')',[row[c] for c in columns])
-        for name,create,rows in children:
-            con.execute(create)
-            for row in rows:
-                columns=list(row);con.execute(f'INSERT INTO "{name}"('+','.join(columns)+') VALUES('+','.join('?' for _ in columns)+')',[row[c] for c in columns])
-        for statement in indexes:con.execute(statement)
-        con.commit()
-    except Exception:
-        con.rollback();raise
-    finally:con.close()
-
-
-def save_lead(phrase, sold_units=None, period_days=None, ebay_median_huf=None, evidence_url='',
+def save_lead(phrase, sold_units, period_days, ebay_median_huf, evidence_url,
               *, manually_verified=False):
     initialize()
     phrase=' '.join(str(phrase or '').split())
     if not 3<=len(phrase)<=120:
         raise ValueError('Adj meg 3–120 karakteres terméknevet vagy modellt.')
-    if manually_verified and (type(sold_units) is not int or not 1<=sold_units<=100000):
-        raise ValueError('Az ellenőrzött eladásszám 1 és 100 000 közötti egész szám legyen.')
-    if manually_verified and (type(period_days) is not int or not 1<=period_days<=365):
-        raise ValueError('Az ellenőrzött időszak 1–365 nap legyen.')
-    if not manually_verified and (sold_units is not None or period_days is not None or ebay_median_huf is not None):
-        raise ValueError('eBay-eladási adatot csak forrásoldali ellenőrzés után ments.')
+    if type(sold_units) is not int or not 1<=sold_units<=100000:
+        raise ValueError('Az eladott darabszám 1 és 100 000 közötti egész szám legyen.')
+    if type(period_days) is not int or not 1<=period_days<=365:
+        raise ValueError('Az időszak 1–365 nap legyen.')
     if ebay_median_huf is not None and (type(ebay_median_huf) is not int or ebay_median_huf<=0):
         raise ValueError('Az eBay mediánár forintban megadott, pozitív egész szám legyen.')
+    if not manually_verified:
+        raise ValueError('Csak általad ellenőrzött, tényleges eladási adatot mentsünk.')
     url=str(evidence_url or '').strip()
     parts=None
     try:
@@ -120,28 +74,25 @@ def save_lead(phrase, sold_units=None, period_days=None, ebay_median_huf=None, e
     except ValueError:
         host=''
     ebay_domains=('ebay.com','ebay.de','ebay.co.uk','ebay.fr','ebay.it','ebay.es','ebay.nl','ebay.at','ebay.pl')
-    if manually_verified and (not parts or parts.scheme not in ('https','http') or not host or not any(host==domain or host.endswith('.'+domain) for domain in ebay_domains)):
+    if not parts or parts.scheme not in ('https','http') or not host or not any(host==domain or host.endswith('.'+domain) for domain in ebay_domains):
         raise ValueError('Az eladási bizonyíték linkje egy eBay Sold oldal legyen.')
     now=db.utcnow()
-    existing=db.row('SELECT * FROM demand_leads WHERE phrase=?',(phrase,))
-    if existing and not manually_verified and existing['manually_verified']:
-        return existing
     with db.session() as con:
         con.execute("""INSERT INTO demand_leads(phrase,sold_units,period_days,ebay_median_huf,
              evidence_url,manually_verified,checked_at,created_at,updated_at)
-             VALUES(?,?,?,?,?,?,?,?,?)
+             VALUES(?,?,?,?,?,1,?,?,?)
              ON CONFLICT(phrase) DO UPDATE SET sold_units=excluded.sold_units,
              period_days=excluded.period_days,ebay_median_huf=excluded.ebay_median_huf,
-             evidence_url=excluded.evidence_url,manually_verified=excluded.manually_verified,
+             evidence_url=excluded.evidence_url,manually_verified=1,
              checked_at=excluded.checked_at,updated_at=excluded.updated_at""",
-             (phrase,sold_units,period_days,ebay_median_huf,url,int(bool(manually_verified)),now,now,now))
+             (phrase,sold_units,period_days,ebay_median_huf,url,now,now,now))
     return db.row('SELECT * FROM demand_leads WHERE phrase=?',(phrase,))
 
 
 def leads():
     initialize()
     values=db.rows('SELECT * FROM demand_leads')
-    return sorted(values,key=lambda r:(-float(r['sold_units'] or 0)/max(1,int(r['period_days'] or 1)),r['phrase'].casefold()))
+    return sorted(values,key=lambda r:(-float(r['sold_units'])/max(1,int(r['period_days'])),r['phrase'].casefold()))
 
 
 def scan_suppliers(lead_id, api_key):

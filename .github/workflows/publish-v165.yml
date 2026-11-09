@@ -58,3 +58,5 @@ jobs:
 # Verified source patch revision 2
 
 # Source integration revision 3
+
+# Release quality gate rerun after Hungarian copy regression fix

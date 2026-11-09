@@ -100,6 +100,7 @@ def image_or_placeholder(item, *, height=140, caption=True):
 
 def render_selected_cards(rows,page_size=9):
     import streamlit as st
+    rows=[r for r in rows if r.get('product_id')]
     if not rows:return
     st.markdown('#### Termékek képes előnézete')
     size=max(1,min(18,int(page_size)))

@@ -1,0 +1,64 @@
+name: Publish Resell Agent v1.6.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v160.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify last release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.5.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.5.1.zip*' --dir .
+
+      - name: Build and checksum v1.6.0
+        run: python scripts/build_release_v160.py resell-agent-mvp-v1.5.1.zip
+
+      - name: Verify binary integrity and real app integration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          f=Path('resell-agent-mvp-v1.6.0.zip')
+          assert sha256(f.read_bytes()).hexdigest()==Path(str(f)+'.sha256').read_text().split()[0]
+          with ZipFile(f) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/hunter.py' in names
+              assert 'resell-agent-starter/agent/ui_hunter.py' in names
+              assert "VERSION = '1.6.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              a=z.read('resell-agent-starter/app.py').decode()
+              assert 'render_hunter()' in a
+              assert 'Termékvadász' in a
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Test all Python modules and core business workflows
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish tested release and SHA-256 checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.0 \
+            resell-agent-mvp-v1.6.0.zip \
+            resell-agent-mvp-v1.6.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.0 - Termékvadász" \
+            --notes "Redesigned default product-hunting workspace with multi-query real Hungarian Serper Shopping searches, thumbnail gallery and bulk shortlist, automatic selected-product preparation, optional Cloudflare AI Hungarian listing copy, real photo upload and illustrative photo enhancement, on-site review and eBay official seller API integration with verification gates. Auto-posting on other marketplaces is not connected; no purchases or unsupported bot activity."

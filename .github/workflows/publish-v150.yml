@@ -1,4 +1,5 @@
 name: Publish Resell Agent v1.5.0
+# Rebuild after schema compatibility correction for unknown ETA
 on:
   push:
     paths:

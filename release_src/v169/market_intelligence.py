@@ -98,6 +98,14 @@ def _save_results(phrase,topic,payload):
     matches,skipped,_=shopping.analyze_results(payload)
     matching,_=shopping.select_matching_results(matches,phrase)
     thumbnails=hunter._thumbnails(payload)
+    for hit in payload.get('shopping_results',[]):
+        if not isinstance(hit,dict):
+            continue
+        title=str(hit.get('title') or hit.get('name') or '').strip().casefold()
+        seller=str(hit.get('source') or hit.get('merchant') or hit.get('seller') or '').strip().casefold()
+        pic=radar_previews.url_from_hit(hit)
+        if title and pic:
+            thumbnails.setdefault((title,seller),pic)
     count=0
     for item in matching:
         url,kind=supplier_links.offer_url(item,payload)

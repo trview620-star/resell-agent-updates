@@ -131,8 +131,10 @@ class SourcePhotoSeriesTests(unittest.TestCase):
         self.assertEqual(result['created'],[4])
 
     def test_lack_of_photo_requires_real_source(self):
+        with db.session() as conn:
+            conn.execute('UPDATE hunter_results SET thumbnail=? WHERE id=?',('',self.hid))
         with self.assertRaisesRegex(ValueError,'termékfotó'):
-            studio.create(self.pid)
+            studio.create(self.pid,hunter_id=self.hid)
 
     def test_source_files_remain_unchanged(self):
         data=pattern()

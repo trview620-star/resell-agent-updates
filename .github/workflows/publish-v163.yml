@@ -39,6 +39,7 @@ jobs:
               assert 'Verify ZIP and stage update' in z.read('resell-agent-starter/agent/ui_updates.py').decode()
               assert 'Természetesebb leírás készítése' in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
               assert 'resell-agent-starter/tests/test_listing_tone_v163.py' in z.namelist()
+              assert 'Ha bármi kérdésed van, írj nyugodtan!' in z.read('resell-agent-starter/agent/hunter.py').decode()
               assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
           PY
 

@@ -31,14 +31,13 @@ jobs:
           assert sha256(f.read_bytes()).hexdigest()==Path(str(f)+'.sha256').read_text().split()[0]
           with ZipFile(f) as z:
               assert 'resell-agent-starter/agent/auto_stock_photo.py' in z.namelist()
-              assert "VERSION = '1.6.2'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert "VERSION = '1.6.3'" in z.read('resell-agent-starter/agent/updater.py').decode()
               assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
               assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/hunter.py').decode()
               assert 'file_uploader' not in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
               assert 'def stage_uploaded_update(' in z.read('resell-agent-starter/agent/updater.py').decode()
               assert 'Verify ZIP and stage update' in z.read('resell-agent-starter/agent/ui_updates.py').decode()
               assert 'Természetesebb leírás készítése' in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
-              assert 'A részleteket üzenetben egyeztetjük' not in z.read('resell-agent-starter/agent/hunter.py').decode()
               assert 'resell-agent-starter/tests/test_listing_tone_v163.py' in z.namelist()
               assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
           PY

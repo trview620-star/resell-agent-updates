@@ -1,0 +1,85 @@
+name: Publish Resell Agent v1.6.9 - Top 50 Product Pictures
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v169.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch verified v1.6.8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.8 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.8.zip*' --dir .
+      - name: Build v1.6.9
+        run: python scripts/build_release_v169.py resell-agent-mvp-v1.6.8.zip
+      - name: Verify release and protected folders
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.6.9.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              assert "VERSION = '1.6.9'" in z.read(root+'agent/updater.py').decode()
+              assert 'ImageColumn' in z.read(root+'agent/ui_market_radar.py').decode()
+              assert 'Képes termékkártyák' in z.read(root+'agent/ui_market_radar.py').decode()
+              assert "'thumbnail':thumbnail" in z.read(root+'agent/market_intelligence.py').decode()
+              assert 'def stage_uploaded_update' in z.read(root+'agent/updater.py').decode()
+              assert root+'tests/test_radar_previews.py' in z.namelist()
+              assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/')
+                             for n in z.namelist())
+          PY
+      - name: Full regression tests
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.9.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit Top 50 photo-table and card-view smoke tests
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          from agent import hunter, market_intelligence as radar, db
+          hunter.initialize()
+          radar.initialize()
+          with db.session() as c:
+              c.execute("""INSERT INTO hunter_results(
+                url,title,merchant,price_huf,thumbnail,phrase,topic,
+                link_type,found_at) VALUES(?,?,?,?,?,?,?,?,?)""",
+                ('https://shop.example.org/lego',
+                 'LEGO Botanicals 10328 Rózsacsokor','Demo shop',
+                 19990,'https://img.example.org/10328.jpg',
+                 'LEGO Botanicals 10328 Rózsacsokor','LEGO',
+                 'Direct-domain',db.utcnow()))
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          modes=[r for r in app.radio if 'Képes termékkártyák' in r.options]
+          assert modes,'Top 50 photo mode control did not render'
+          modes[0].set_value('Képes termékkártyák')
+          app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          assert any('Részletek' in b.label for b in app.button)
+          print('Top 50 table and photo-card modes rendered successfully.')
+          PY
+      - name: Publish checksum-verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.9 \
+            resell-agent-mvp-v1.6.9.zip \
+            resell-agent-mvp-v1.6.9.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.9 - Top 50 Product Photos" \
+            --notes "Adds supplier photo thumbnails directly inside the Top 50 table, optional image-card view, larger selected-product previews, and merchant photo thumbnails. No extra API calls just to display saved pictures. New image field variations supported. Existing app data, listing/photo workflows, settings and updater preserved."

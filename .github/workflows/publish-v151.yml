@@ -1,0 +1,59 @@
+name: Publish Resell Agent v1.5.1
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v151.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.5.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.5.0.zip*' --dir .
+
+      - name: Build minimal Christmas page patch
+        run: python scripts/build_release_v151.py resell-agent-mvp-v1.5.0.zip
+
+      - name: Validate package and checksum
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          p=Path('resell-agent-mvp-v1.5.1.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          with ZipFile(p) as z:
+              assert "VERSION = '1.5.1'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert 'Natúr hatású adventi koszorú' in z.read('resell-agent-starter/agent/christmas_trial.py').decode()
+              assert 'Kép és hirdetés készítése' in z.read('resell-agent-starter/agent/ui_christmas_trial.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
+          PY
+
+      - name: Run full Python regression suite
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.5.1.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish safe update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.5.1 \
+            resell-agent-mvp-v1.5.1.zip \
+            resell-agent-mvp-v1.5.1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.5.1 - Simplified Christmas Pilot" \
+            --notes "Simpler Hungarian product page with one image, one editable naturally worded ad and one save button. Technical warnings moved out of customer listing copy. Optional real product-photo reference for more accurate home-style photos. No account publishing or supplier purchase."

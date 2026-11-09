@@ -1,0 +1,64 @@
+name: Publish Resell Agent v1.9.0 – Product Studio
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.8.0 with checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.8.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.8.0.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v190.py resell-agent-mvp-v1.8.0.zip
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.9.0.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          root='resell-agent-starter/'
+          with ZipFile(p) as z:
+              app=z.read(root+'app.py').decode()
+              assert "VERSION = '1.9.0'" in z.read(root+'agent/updater.py').decode()
+              assert 'Termékkatalógus' in app and 'render_product_studio' in app
+              assert 'generate_pack' in z.read(root+'agent/product_studio.py').decode()
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.9.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          nav=next(r for r in app.radio if 'Termékkatalógus' in r.options)
+          assert nav.options==['Termékkatalógus','App updates']
+          nav.set_value('App updates');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          PY
+      - name: Publish verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.9.0 \
+            resell-agent-mvp-v1.9.0.zip \
+            resell-agent-mvp-v1.9.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.9.0 – Product Studio" \
+            --notes "Redesigns the app as an image-led product discovery and posting studio. Record actual eBay Sold demand evidence, find matching offers from the 13 approved retailers, select candidates into an ordered queue, edit Hungarian descriptions, calculate a 4,900 HUF price floor over verified landed cost, generate four separate AI illustrative images from catalogue photos, and download a numbered posting ZIP. Catalog images and AI illustrations remain clearly labeled. eBay sales evidence is entered manually. Supplier availability and delivery require manual confirmation. Existing local data is retained; marketplace publishing is not automated."

@@ -68,10 +68,8 @@ def render(product_id,hunter_id,title):
 
         current=source_photo_series.read(pid)
         if current:
-            for offset in (0,len(current)//2):
-                # Two columns, but only one loop through each photo.
-                if offset>=len(current):continue
-                subset=current[offset:offset+(len(current)//2)]
+            for offset in range(0,len(current),2):
+                subset=current[offset:offset+2]
                 if not subset:continue
                 columns=st.columns(2,gap='medium')
                 for col,item in zip(columns,subset):

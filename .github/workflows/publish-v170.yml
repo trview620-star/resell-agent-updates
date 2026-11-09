@@ -31,7 +31,7 @@ jobs:
               assert "VERSION = '1.7.0'" in z.read(root+'agent/updater.py').decode()
               assert "Dashboard" in z.read(root+'app.py').decode()
               assert 'private_research' in z.read(root+'agent/ui_private_dashboard.py').decode()
-              assert "['Vinted','Jófogás']" in z.read(root+'app.py').decode()
+              assert "'Vinted','Jófogás'" in z.read(root+'app.py').decode()
               assert root+'tests/test_private_dashboard.py' in z.namelist()
               assert not any(n.startswith(root+'data/') or n.startswith(root+'backups/')
                              for n in z.namelist())

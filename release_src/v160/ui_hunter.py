@@ -104,8 +104,7 @@ def _cards(items, markets, cloud_id,cloud_token, use_ai, page_size=12):
                         try:st.image(row['thumbnail'],width=215)
                         except Exception:st.caption('Nincs elérhető előnézeti kép')
                     else:
-                        st.markdown('#### <icon name="package"/>',unsafe_allow_html=False)
-                        st.caption('Kép nem érhető el')
+                        st.caption('📦 Kép nem érhető el')
                     st.write('**'+row['title'][:115]+'**')
                     st.caption(row['merchant']+' · '+row['topic'])
                     st.markdown('### '+money(row['price_huf']))
@@ -176,7 +175,8 @@ def _feed_tab(serper,cloud_id,cloud_token,markets,use_ai):
             disabled=['ID','Termék','Kereskedő','Beszerzési ár (Ft)','Állapot'],
             column_config={'Kiválaszt':st.column_config.CheckboxColumn('Kiválaszt')},
             key='hunter_bulk_grid')
-        chosen=[int(r['ID']) for r in edited if r['Kiválaszt'] and r['Állapot']=='new']
+        table_rows=edited.to_dict('records') if hasattr(edited,'to_dict') else list(edited)
+        chosen=[int(r['ID']) for r in table_rows if r['Kiválaszt'] and r['Állapot']=='new']
         if st.button(f'{len(chosen)} termék automatikus előkészítése',disabled=not bool(chosen),
                      type='primary',key='hunter_bulk_prepare'):
             with st.spinner('Termékenként készülnek a hirdetéspiszkozatok...'):

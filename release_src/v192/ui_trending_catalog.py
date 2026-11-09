@@ -62,9 +62,10 @@ def _money(value):
     return f"{int(value):,} Ft".replace(',',' ') if value else 'Ár nincs'
 
 def _api_key():
-    key=os.getenv('SERPER_API_KEY','').strip() or st.session_state.get('trend_catalog_key','').strip()
-    if not key:return st.text_input('Serper API-kulcs',type='password',key='trend_catalog_key')
-    return key
+    if 'trend_catalog_key' not in st.session_state:
+        st.session_state['trend_catalog_key']=os.getenv('SERPER_API_KEY','').strip()
+    return st.text_input('Serper API-kulcs',type='password',key='trend_catalog_key',
+                         placeholder='Serper API-kulcs megadása')
 
 def _load_topics(key,topics):
     reports=[]
@@ -91,7 +92,7 @@ def render():
         with st.spinner('Keresem a bolti termékeket és képeket…'):
             _load_topics(key,topics)
         st.rerun()
-    if not key:st.info('A termékkereséshez Serper API-kulcs szükséges. Beállítás után a témák keresése automatikus.')
+    if not key:st.info('A termékkereséshez Serper API-kulcs szükséges. Megadás után nyomd meg a „Friss termékek keresése” gombot.')
     st.caption('A képek bolti katalógusfotók. A Google Trends link minden kártyán az adott terméktémára nyílik meg.')
     reports=st.session_state.get('trend_catalog_last_run',[])
     if reports:

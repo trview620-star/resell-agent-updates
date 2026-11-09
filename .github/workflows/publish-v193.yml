@@ -1,0 +1,69 @@
+name: Publish Resell Agent v1.9.3 – API key field fix
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v1.9.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.9.2 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.9.2.zip*' --dir .
+      - name: Build release
+        run: python scripts/build_release_v193.py resell-agent-mvp-v1.9.2.zip
+      - name: Verify package
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('resell-agent-mvp-v1.9.3.zip')
+          assert sha256(p.read_bytes()).hexdigest()==Path(str(p)+'.sha256').read_text().split()[0]
+          with ZipFile(p) as z:
+              root='resell-agent-starter/'
+              assert "VERSION = '1.9.3'" in z.read(root+'agent/updater.py').decode()
+              ui=z.read(root+'agent/ui_trending_catalog.py').decode()
+              assert "st.text_input('Serper API-kulcs'" in ui
+              assert 'if not key:return st.text_input' not in ui
+              assert not any(x.startswith(root+'data/') or x.startswith(root+'backups/') for x in z.namelist())
+          PY
+      - name: Regression tests
+        run: |
+          mkdir -p release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.9.3.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+      - name: Streamlit UI smoke
+        run: |
+          cd release-test/resell-agent-starter
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file('app.py',default_timeout=60).run()
+          assert not app.exception,[e.message for e in app.exception]
+          key=next(x for x in app.text_input if x.label=='Serper API-kulcs')
+          key.set_value('test-session-key');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          assert any(x.label=='Serper API-kulcs' for x in app.text_input)
+          assert next(x for x in app.button if x.label=='Friss termékek keresése').disabled is False
+          nav=next(x for x in app.radio if 'Termékek' in x.options)
+          assert nav.options==['Termékek','App updates']
+          nav.set_value('App updates');app.run()
+          assert not app.exception,[e.message for e in app.exception]
+          PY
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.9.3 \
+            resell-agent-mvp-v1.9.3.zip \
+            resell-agent-mvp-v1.9.3.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.9.3 – API Key Field Fix" \
+            --notes "Fixes the Serper API key field disappearing after entry. The field stays visible and editable in the current session before search starts."

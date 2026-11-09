@@ -51,8 +51,11 @@ def supplier_name(offer):
     for name,domain,aliases in SUPPLIERS:
         if host and (host==domain or host.endswith('.'+domain)):
             return name
+    # A seller claiming to be Alza on an unrelated direct domain is not Alza.
+    if supplier_links.direct_url(raw):
+        return None
     for name,domain,aliases in SUPPLIERS:
-        if merchant in aliases or merchant==normalize(name):
+        if merchant in aliases or merchant in (normalize(name),normalize(domain)):
             return name
     return None
 

@@ -1,0 +1,60 @@
+name: Publish Resell Agent v1.5.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v150.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified previous version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.4.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.4.1.zip*' --dir .
+
+      - name: Build Christmas pilot and checksum
+        run: python scripts/build_release_v150.py resell-agent-mvp-v1.4.1.zip
+
+      - name: Validate SHA-256, version, and scope
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          f=Path('resell-agent-mvp-v1.5.0.zip')
+          assert sha256(f.read_bytes()).hexdigest()==Path(str(f)+'.sha256').read_text().split()[0]
+          with ZipFile(f) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/ui_christmas_trial.py' in names
+              assert 'resell-agent-starter/agent/christmas_trial.py' in names
+              assert "VERSION = '1.5.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Compile and test entire application
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.5.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish one-product pilot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.5.0 \
+            resell-agent-mvp-v1.5.0.zip \
+            resell-agent-mvp-v1.5.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.5.0 - Christmas One-Product Pilot" \
+            --notes "One-click test: one exact Christmas product, one supplier price research request and one Cloudflare AI illustrative photo. Includes one Hungarian unpriced draft, product review and approval, and no marketplace publication or purchase. Unverified source and image details remain clearly marked."

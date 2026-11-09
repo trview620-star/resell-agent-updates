@@ -26,7 +26,7 @@ def category_text(title):
                 'Ajándéknak is jó ötlet, de saját gyűjteménybe is szívesen választják.')
     if any(x in name for x in ('dobble','dixit','azul','catan','hitster','ticket to ride',
                                 'társasjáték','kártyajáték','exploding kittens')):
-        return ('Jó választás egy közös játékhoz, akár családdal, akár barátokkal. '
+        return ('Jó választás, ha egy közös játékot keresel családdal vagy barátokkal. '
                 'Ajándéknak is jó ötlet.')
     if any(x in name for x in ('switch','playstation','xbox','dualsense','nintendo','8bitdo','kontroller','kormány')):
         return ('Ha játékhoz keresel ilyet, érdemes megnézni. '

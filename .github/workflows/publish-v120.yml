@@ -1,0 +1,59 @@
+name: Publish Resell Agent v1.2.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v120.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download published v1.1.0 and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.1.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.1.0.zip*' --dir .
+
+      - name: Build and hash version 1.2.0
+        run: python scripts/build_release_v120.py resell-agent-mvp-v1.1.0.zip
+
+      - name: Verify package and checksum
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          a=Path('resell-agent-mvp-v1.2.0.zip')
+          assert sha256(a.read_bytes()).hexdigest()==Path(str(a)+'.sha256').read_text().split()[0]
+          with ZipFile(a) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/ui_ai_listing_photos.py' in names
+              assert "VERSION = '1.2.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Run regression, compiler and image-edit mock tests
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.2.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish signed checksum and update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.2.0 \
+            resell-agent-mvp-v1.2.0.zip \
+            resell-agent-mvp-v1.2.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.2.0 - AI Listing Photo Previews" \
+            --notes "Four separate home-style AI photo previews, no collages, full-resolution images, approve/download or regenerate individual angle. Optional paid OpenAI Image API key required, independent of Ollama; no automatic calls. AI views are illustrative and should not be used as proof of the exact product condition."

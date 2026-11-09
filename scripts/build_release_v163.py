@@ -21,6 +21,7 @@ replace('agent/updater.py',"VERSION = '1.6.2'","VERSION = '1.6.3'")
 replace('tests/test_updater.py','1.6.3','1.6.4')
 replace('tests/test_upload_update.py',"'1.6.3'","'1.6.4'")
 replace('tests/test_upload_update.py',"'1.6.2'","'1.6.3'")
+replace('tests/test_upload_update.py',"'v1.6.3'","'v1.6.4'")
 
 def replace_span(path, start_marker, end_marker, replacement):
     key=ROOT+path

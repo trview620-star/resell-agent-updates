@@ -26,6 +26,7 @@ class ListingImagePreviewTests(unittest.TestCase):
         ]
         for p in self.patches:p.start()
         hunter.initialize()
+        stock.init_store()
         self.pid=db.insert_product({
             'title':'HyperX Cloud III gamer headset',
             'brand':'HyperX','model':'Cloud III','category':'Gaming',

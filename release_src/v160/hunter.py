@@ -371,7 +371,12 @@ def publish_ebay(hunter_id,oauth_token,profile):
     if (datetime.now(timezone.utc)-checked).total_seconds()>48*3600:
         raise ValueError('A készletellenőrzés 48 óránál régebbi.')
     if int(listing['price'] or 0)<=0:
-        raise ValueError('Hiányzik a felülvizsgált hirdetési ár.')
+        raise ValueError('Hiányzik az ellenőrzött, forintban megadott belső eladási ár.')
+    try:
+        platform_price=float(str(profile.get('market_price','')).replace(',','.'))
+        if not 0<platform_price<=1_000_000: raise ValueError()
+    except (TypeError,ValueError):
+        raise ValueError('Add meg az eBay pénznemében a külön eladási árat.')
     if not isinstance(profile,dict) or not profile.get('confirmed_source_photo'):
         raise ValueError('A valódi és jogszerű termékfotó nincs jóváhagyva.')
     required=['currency','category_id','condition','merchant_location_key',
@@ -385,7 +390,7 @@ def publish_ebay(hunter_id,oauth_token,profile):
         raise ValueError('Valódi, nyilvános HTTPS termékfotók szükségesek.')
     client=EbayInventory(oauth_token,profile.get('environment','sandbox'))
     result=client.publish(sku=profile['sku'],title=listing['title'],
-        description=listing['description'],price=listing['price'],
+        description=listing['description'],price=profile['market_price'],
         currency=profile['currency'],category_id=profile['category_id'],
         condition=profile['condition'],merchant_location_key=profile['merchant_location_key'],
         marketplace_id=profile['marketplace_id'],
@@ -395,6 +400,10 @@ def publish_ebay(hunter_id,oauth_token,profile):
         image_urls=images,aspects=profile['aspects'])
     if not result.get('listing_id'):
         raise ValueError('Az eBay nem adott vissza megerősített listing ID-t.')
-    db.update_listing(listing['id'],status='published',
-        url='https://www.ebay.com/itm/'+str(result['listing_id']) if profile.get('environment')=='production' else '')
+    if profile.get('environment','sandbox')=='production':
+        db.update_listing(listing['id'],status='published',
+            url='https://www.ebay.com/itm/'+str(result['listing_id']))
+        result['mode']='production'
+    else:
+        result['mode']='sandbox'
     return result

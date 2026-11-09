@@ -1,0 +1,75 @@
+    st.markdown('**4 különálló termékkép – jóváhagyásra váró előnézetek**')
+    st.caption('Ezek AI-illusztrációk az eredeti katalóguskép alapján, nem az eladó által '
+               'készített valódi fotók. Nem bizonyítják, hogy a termék új vagy bontatlan. '
+               'Négy új kép készítése akár négy Cloudflare-képgenerálási hívást jelent.')
+    cloud_id,cloud_token=credentials()[1:]
+    pictures=stock_photo_gallery.slots(selected)
+    for offset in (0,2):
+        cols=st.columns(2,gap='medium')
+        for col,picture in zip(cols,pictures[offset:offset+2]):
+            number=picture['slot']
+            with col:
+                with st.container(border=True):
+                    st.markdown(f'**{number}/4. kép**')
+                    if picture['bytes']:
+                        st.image(picture['bytes'],use_container_width=True,
+                                 caption='AI-illusztráció – külön ellenőrzendő')
+                        if picture['status']=='pending':
+                            if st.button('Kép jóváhagyása',
+                                key=f'hunter_four_approve_{selected}_{number}',
+                                use_container_width=True):
+                                try:
+                                    stock_photo_gallery.approve(selected,number)
+                                    st.success('Kép jóváhagyva.')
+                                    st.rerun()
+                                except (ValueError,OSError) as error:
+                                    st.error(str(error))
+                            if cloud_id and cloud_token and st.button(
+                                  'Másik változat',
+                                  key=f'hunter_four_regen_{selected}_{number}',
+                                  use_container_width=True):
+                                stock_photo_gallery.regenerate(
+                                    selected,number,cloud_id,cloud_token)
+                                st.rerun()
+                        elif picture['status']=='approved':
+                            st.success('Jóváhagyott illusztráció.')
+                    elif picture['status']=='failed':
+                        st.warning(picture['last_error'] or 'Nem sikerült elkészíteni.')
+                        if cloud_id and cloud_token and st.button(
+                                'Újrapróbálom',
+                                key=f'hunter_four_retry_{selected}_{number}'):
+                            stock_photo_gallery.regenerate(
+                                selected,number,cloud_id,cloud_token)
+                            st.rerun()
+                    elif picture['status']=='missing':
+                        st.info('Nincs megfelelő forráskép.')
+                    else:
+                        st.caption('Ehhez még nincs képelőnézet.')
+    if pictures[0]['source_image_url']:
+        st.markdown('[Katalóguskép megnyitása]('+pictures[0]['source_image_url']+')')
+    if cloud_id and cloud_token:
+        if pictures[0]['status'] in ('not_generated','missing','failed'):
+            if st.button('4 képelőnézet elkészítése',type='primary',
+                         key='hunter_four_make_'+str(selected)):
+                new=auto_stock_photo.generate_preview(
+                    selected,cloud_id,cloud_token,
+                    force=pictures[0]['status']=='failed')
+                if new and new['status'] in ('pending','approved'):
+                    try:
+                        stock_photo_gallery.generate_remaining(
+                            selected,cloud_id,cloud_token)
+                    except (ValueError,OSError) as error:
+                        st.warning(str(error))
+                st.rerun()
+        elif any(p['status']=='not_generated' for p in pictures[1:]):
+            if st.button('Hiányzó képek elkészítése',
+                         key='hunter_four_missing_'+str(selected)):
+                try:
+                    stock_photo_gallery.generate_remaining(
+                        selected,cloud_id,cloud_token)
+                except (ValueError,OSError) as error:
+                    st.warning(str(error))
+                st.rerun()
+    else:
+        st.caption('Az automatikus képekhez add meg a Cloudflare-adatokat a Beállítások fülön.')
+

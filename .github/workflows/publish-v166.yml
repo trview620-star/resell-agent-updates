@@ -70,3 +70,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Resell Agent v1.6.6 – Listing Image Previews" \
             --notes "Image thumbnails beside selected products and listing drafts, source-labelled gallery with original seller photos prioritised, 4 contextual shot-role prompts and near-duplicate warnings. Existing API settings, backups and dashboard updater retained."
+
+# Re-run after image fixture initialization

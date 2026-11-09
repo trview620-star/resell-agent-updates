@@ -1,0 +1,60 @@
+name: Publish Resell Agent v1.3.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v130.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified base application
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.2.0 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.2.0.zip*' --dir .
+
+      - name: Build and checksum new release
+        run: python scripts/build_release_v130.py resell-agent-mvp-v1.2.0.zip
+
+      - name: Validate archive contents and integrity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          a=Path('resell-agent-mvp-v1.3.0.zip')
+          assert sha256(a.read_bytes()).hexdigest()==Path(str(a)+'.sha256').read_text().split()[0]
+          with ZipFile(a) as z:
+              names=z.namelist()
+              assert 'resell-agent-starter/agent/ui_free_photo_import.py' in names
+              assert "VERSION = '1.3.0'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in names)
+          PY
+
+      - name: Compile and run entire test suite
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.3.0.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish verified update assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.3.0 \
+            resell-agent-mvp-v1.3.0.zip \
+            resell-agent-mvp-v1.3.0.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.3.0 - Free ChatGPT Photo Import" \
+            --notes "No-extra-API-cost image workflow: create photos in ChatGPT (within account limits), drag individual files or ZIP into Resell Agent, preview/approve and save under the product. Photo generation cannot run automatically through ChatGPT without API billing. Original product photos unchanged."

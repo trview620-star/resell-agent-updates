@@ -106,7 +106,7 @@ class ListingImagePreviewTests(unittest.TestCase):
         self.assertEqual(photo_shot_plan.category('LEGO 21366'),'lego')
         self.assertEqual(photo_shot_plan.category('Ninja Airfryer 180'),'kitchen')
         self.assertEqual(photo_shot_plan.category('Dobble társasjáték'),'boardgame')
-        self.assertNotIn('kitchen',' '.join(photo_shot_plan.prompt_for('Gamer headset',1).split('SCENE: ')[1].split(' FRAMING')[0].lower().split())[:2])
+        self.assertIn('No kitchen', photo_shot_plan.prompt_for('Gamer headset',1))
 
     def test_duplicate_warning(self):
         data=png('red')

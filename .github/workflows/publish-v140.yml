@@ -1,4 +1,5 @@
 name: Publish Resell Agent v1.4.0
+# Regression test: compare decoded image content, not PNG compression
 on:
   push:
     paths:

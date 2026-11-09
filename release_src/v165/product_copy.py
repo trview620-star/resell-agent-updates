@@ -65,10 +65,9 @@ def cloud_prompt(product):
     verified=str(product.get('verified_facts') or '').strip()
     if verified:context.append('Külön ellenőrzött adatok: '+verified[:600])
     return (
-        'Írj egy rövid, természetes magyar apróhirdetést, mintha egy átlagos '
-        'magáneladó írná a Vinteden. Kizárólag a megadott terméket és '
+        'Írj egy rövid, természetes magyar apróhirdetést, mintha egy hétköznapi magáneladó írná a Vinteden. Kizárólag a megadott terméket és '
         'ellenőrzött tényeket használd. A stílus legyen egyszerű, meleg, '
-        'barátságos, pár rövid mondatban, nem marketinges. '
+        'barátságos, pár rövid mondatban, nem marketinges. Ne legyen gépies. '
         'Először: "Eladó [termék neve]." Majd 1-2 olyan mondat, ami az adott '
         'termékre illik, érdeklődést kelt, de nem állít ellenőrizetlen műszaki '
         'tulajdonságokat, tartozékokat, bontatlan állapotot vagy működést. '

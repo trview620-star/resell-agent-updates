@@ -1,0 +1,37 @@
+name: Inspect v1.6.9 UI contracts for private dashboard
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-v170.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect existing layout safely
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.6.9 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.9.zip' --dir .
+          unzip -q resell-agent-mvp-v1.6.9.zip
+          cd resell-agent-starter
+          python - <<'PY'
+          from pathlib import Path
+          files={
+            'app.py':[(1,235),(470,610)],
+            'agent/ui_hunter.py':[(1,28),(190,340),(340,440)],
+            'agent/ui_theme.py':[(1,195)],
+            'agent/db.py':[(115,220),(220,375)],
+          }
+          for name,ranges in files.items():
+              p=Path(name)
+              if not p.is_file():continue
+              lines=p.read_text(encoding='utf-8').splitlines()
+              print('\n=== FILE',name,'('+str(len(lines))+' lines) ===')
+              for lo,hi in ranges:
+                  for idx in range(lo-1,min(len(lines),hi)):
+                      print(f'{idx+1:04d}: {lines[idx]}')
+          PY

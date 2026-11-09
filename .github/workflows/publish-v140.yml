@@ -1,5 +1,5 @@
 name: Publish Resell Agent v1.4.0
-# Regression test: compare decoded image content, not PNG compression
+# Regression test now uses actual newline formatting in Python test
 on:
   push:
     paths:

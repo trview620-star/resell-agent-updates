@@ -1,0 +1,62 @@
+name: Publish Resell Agent v1.6.2 - In-app ZIP update
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v162.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'trview620-star/resell-agent-updates'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified v1.6.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.6.1 --repo "$GITHUB_REPOSITORY" --pattern 'resell-agent-mvp-v1.6.1.zip*' --dir .
+
+      - name: Build and hash v1.6.2
+        run: python scripts/build_release_v162.py resell-agent-mvp-v1.6.1.zip
+
+      - name: Verify checksum and source integration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from hashlib import sha256
+          f=Path('resell-agent-mvp-v1.6.2.zip')
+          assert sha256(f.read_bytes()).hexdigest()==Path(str(f)+'.sha256').read_text().split()[0]
+          with ZipFile(f) as z:
+              assert 'resell-agent-starter/agent/auto_stock_photo.py' in z.namelist()
+              assert "VERSION = '1.6.1'" in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
+              assert 'auto_stock_photo.generate_preview' in z.read('resell-agent-starter/agent/hunter.py').decode()
+              assert 'file_uploader' not in z.read('resell-agent-starter/agent/ui_hunter.py').decode()
+              assert 'def stage_uploaded_update(' in z.read('resell-agent-starter/agent/updater.py').decode()
+              assert 'Verify ZIP and stage update' in z.read('resell-agent-starter/agent/ui_updates.py').decode()
+              assert not any(n.startswith('resell-agent-starter/data/') for n in z.namelist())
+          PY
+
+      - name: Run full app tests and compile
+        run: |
+          mkdir release-test
+          cd release-test
+          unzip -q ../resell-agent-mvp-v1.6.2.zip
+          python -m pip install -q -r resell-agent-starter/requirements.txt
+          cd resell-agent-starter
+          python -m compileall -q app.py agent tests
+          python -m unittest discover -s tests -v
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.2 \
+            resell-agent-mvp-v1.6.2.zip \
+            resell-agent-mvp-v1.6.2.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Resell Agent v1.6.2 - In-app ZIP Update" \
+            --notes "Adds optional trusted ZIP upload to App updates while preserving GitHub Releases updating, backups, validation, automatic restart and rollback. No API changes. Existing v1.6.1 product and photo workflows are preserved."

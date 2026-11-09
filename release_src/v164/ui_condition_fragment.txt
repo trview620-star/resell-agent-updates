@@ -1,0 +1,26 @@
+    st.markdown('**Termék állapota a hirdetésekben**')
+    st.caption('Az „új” és az „új, bontatlan” csak igazolt beszállítói adatok alapján kerülhet a címbe és a leírásba.')
+    choices=['unknown','new','sealed']
+    options={'unknown':'Még nincs ellenőrizve',
+             'new':'Új – ellenőrizve',
+             'sealed':'Új, bontatlan, gyári csomagolásban – ellenőrizve'}
+    selected_state=st.selectbox(
+        'Állapot a hirdetésben',choices,
+        index=choices.index(condition_copy.state_of(product)),
+        format_func=lambda value:options[value],
+        key='hunter_product_condition_'+str(selected))
+    verified_state=False
+    if selected_state!='unknown':
+        verified_state=st.checkbox(
+            'A beszállító termékoldala / visszaigazolása igazolja az állapotot; '
+            'bontatlanként csak igazolt gyári, lezárt csomagolást jelölök.',
+            key='hunter_condition_confirm_'+str(selected))
+    if st.button('Állapot mentése a hirdetésekhez',
+                 key='hunter_condition_apply_'+str(selected)):
+        try:
+            condition_copy.confirm_condition(
+                product['id'],selected_state,verified=verified_state)
+            st.success('Állapot elmentve a címekhez és a leírásokhoz.')
+            st.rerun()
+        except ValueError as error:
+            st.error(str(error))
